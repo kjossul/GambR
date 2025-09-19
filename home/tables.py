@@ -10,6 +10,8 @@ class Player(Table):
     """
     uuid = UUID(unique=True)
     name = Varchar()
+    # used for authentication with OpenPlanet
+    secret = Varchar(32)
     groups = M2M(LazyTableReference("PlayerToGroup", module_path=__name__))
     bets = M2M(LazyTableReference("Bet", module_path=__name__))
 
@@ -72,7 +74,7 @@ class Prediction(Table):
     group = ForeignKey(Group, null=False)
     # 0: versus, 1: guess the time, 2: raffle
     type = SmallInt()
-    # when the prediction window closes
+    # when the window to perform bets on this prediction closes
     close_time = Timestamp()
     # when the prediction ends and results are computed
     end_time = Timestamp()

@@ -7,7 +7,7 @@ from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from home.endpoints import HomeEndpoint
+from home.endpoints import HomeEndpoint, routes
 from home.piccolo_app import APP_CONFIG
 from home.tables import Task
 
@@ -47,7 +47,7 @@ app = Starlette(
             ),
         ),
         Mount("/static/", StaticFiles(directory="static")),
-        Mount("/tasks/", PiccoloCRUD(table=Task)),
+        *routes
     ],
     lifespan=lifespan,
 )
