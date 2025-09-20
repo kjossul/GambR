@@ -10,8 +10,8 @@ class Player(Table):
     """
     uuid = UUID(unique=True)
     name = Varchar()
-    # used for authentication with OpenPlanet
-    secret = Varchar(32)
+    # used for authentication through OpenPlanet
+    secret = Varchar(64, unique=True)
     groups = M2M(LazyTableReference("PlayerToGroup", module_path=__name__))
     bets = M2M(LazyTableReference("Bet", module_path=__name__))
 
@@ -34,8 +34,8 @@ class Group(Table):
     tracks = M2M(LazyTableReference("TrackToGroup", module_path=__name__))
     # can be used to set custom name for the group points
     points_name = Varchar(default="points")
-    # 0: only admins allowed to make predictions, 1: everyone
-    permissions = Boolean()
+    # 0: everyone allowed to make predictions, 1: only admins
+    restricted = Boolean()
     # 0: hidden, 1: public
     visibility = Boolean()
     # number of automated predictions to be created periodically
@@ -64,6 +64,8 @@ class TrackToGroup(Table):
     """
     track = ForeignKey(Track)
     group = ForeignKey(Group)
+    # amount of predictions ran on this track
+    counter = Integer()
 
 
 class Prediction(Table):

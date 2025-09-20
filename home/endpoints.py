@@ -33,13 +33,22 @@ async def post(auth: Auth):
     user = r.json()
     if "error" in user:
         raise HTTPException(status_code=400, detail="Invalid authentication")
-    # generate secret and update player table
-    token = secrets.token_hex(32)
-    q = Player.insert(
+    # generate unique secret and update player table
+    token = secrets.token_hex(64)
+    while await Player.exists().where(Player.secret == token):
+        token = secrets.token_hex(64)
+    await Player.insert(
         Player(uuid=user["account_id"], name=user["display_name"], secret=token)
     ).on_conflict(
         action="DO UPDATE",
         values=[Player.name, Player.secret]
     )
-    q.run_sync()
     return Auth(token=token)
+
+def authenticator(f):
+    async def wrapper(request: RequestBase):
+        player = await request.get_player()
+        if not player:
+            raise HTTPException(status_code=403, detail="Forbidden. Auth only allowed through OpenPlanet.")
+        return f(request)
+    return wrapper
