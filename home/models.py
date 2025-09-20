@@ -3,6 +3,7 @@ from piccolo.columns import *
 from piccolo.columns.m2m import M2M
 from datetime import timedelta
 
+STARTING_POINTS = 1000
 
 class Player(Table):
     """
@@ -54,7 +55,7 @@ class PlayerToGroup(Table):
     """
     player = ForeignKey(Player)
     group = ForeignKey(Group)
-    points = Integer()
+    points = Integer(default=STARTING_POINTS)
     admin = Boolean()
 
 

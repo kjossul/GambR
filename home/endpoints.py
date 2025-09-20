@@ -51,9 +51,16 @@ async def verify_secret(secret: Annotated[str, Header()]):
         raise HTTPException(status_code=400, detail="secret invalid")
 
 @app.post('/groups', dependencies=[Depends(verify_secret)])
-async def post_group(group: GroupModel):
+async def post_group(secret: Annotated[str, Header()], group: GroupModel):
     if await Group.exists().where(Group.name == group.name):
         raise HTTPException(status_code=409, detail="Group name already exists")
-    # todo make user who created this admin
-    id = await Group.insert(Group(group.model_dump(exclude_none=True))).returning(Group.id)
-    return JSONResponse({"id": id})
+    # validate group name
+    g = Group(group.model_dump(exclude_none=True))
+    creator = await Player.objects().get(Player.secret == secret)
+    await creator.add_m2m(
+        g,
+        m2m=Player.groups,
+        extra_column_values={"admin": True}
+    )
+    g = await Group.objects().get(Group.name == group.name)
+    return JSONResponse({"id": g.id})

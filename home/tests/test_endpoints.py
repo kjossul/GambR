@@ -24,4 +24,6 @@ class TestEndpoints(IsolatedAsyncioTestCase):
         }
         response = client.post("/groups", headers=headers, json=data)
         assert response.status_code == 200
+        assert response.json()["id"] == 1
         assert await Group.count() == 1
+        assert await PlayerToGroup.count() == 1
