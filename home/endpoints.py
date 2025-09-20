@@ -52,9 +52,10 @@ async def verify_secret(secret: Annotated[str, Header()]):
 
 @app.post('/groups', dependencies=[Depends(verify_secret)])
 async def post_group(secret: Annotated[str, Header()], group: GroupModel):
+    if not group.name or len(group.name) < 3:
+        raise HTTPException(status_code=400, detail="Group name must be at least 3 characters long")
     if await Group.exists().where(Group.name == group.name):
         raise HTTPException(status_code=409, detail="Group name already exists")
-    # validate group name
     g = Group(group.model_dump(exclude_none=True))
     creator = await Player.objects().get(Player.secret == secret)
     await creator.add_m2m(
