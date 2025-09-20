@@ -2,14 +2,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import HTTPException
-from tables import *
+from models import *
 from schemas import *
 import requests
 import secrets
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-# searchpath=os.path.join(os.path.dirname(__file__), "templates")
 
 @app.get('/', response_class=HTMLResponse)
 async def get_root(request: Request):

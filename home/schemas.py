@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from tables import Player
+from models import Player
 
 class Auth(BaseModel):
     token: str
