@@ -1,11 +1,8 @@
+from piccolo.utils.pydantic import create_pydantic_model
 from pydantic import BaseModel
-from models import Player
+from models import *
 
 class Auth(BaseModel):
     token: str
 
-class RequestBase(BaseModel):
-    secret: str
-
-    async def get_player(self):
-        return Player.select().where(Player.secret == self.secret)
+GroupModel = create_pydantic_model(Group)
