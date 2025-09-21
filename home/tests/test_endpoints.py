@@ -35,7 +35,7 @@ class TestEndpoints(IsolatedAsyncioTestCase):
         await ModelBuilder.build(Player, defaults={"id": 2, "name": "2", "secret": "foo"})
         response = client.get("/groups/1", headers={"secret": "foo"})
         assert response.status_code == 403
-        response = client.post("/groups/join", headers={"secret": "foo"}, json=data)
+        response = client.post("/groups/players", headers={"secret": "foo"}, json=data)
         for member in response.json()["players"]:
             if member["name"] == "1":
                 assert member["admin"]

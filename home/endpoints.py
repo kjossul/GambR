@@ -28,7 +28,7 @@ async def auth(auth: Auth):
     data = {
         "token": auth.token,
         "secret": None
-    }  # todo (validate data before sending also to avoid unneccessary calls)
+    }  # todo (validate data before sending also to avoid unnecessary calls)
     r = requests.post(op_url, data=data, headers=headers)
     user = r.json()
     if "error" in user:
@@ -86,7 +86,7 @@ async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut
     out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
     return GroupOut(**out)
 
-@app.post('/groups/join')
+@app.post('/groups/players')
 async def join_group(secret: Annotated[str, Header()], name: Annotated[str, Body(embed=True)]) -> GroupOut:
     """
     Join group
