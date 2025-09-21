@@ -1,6 +1,6 @@
 import os
 from typing import Annotated
-from fastapi import FastAPI, Request, Depends, Header, HTTPException
+from fastapi import FastAPI, Request, Depends, Header, HTTPException, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from models import *
@@ -46,18 +46,22 @@ async def auth(auth: Auth):
     return Auth(token=token)
 
 async def verify_secret(secret: Annotated[str, Header()]):
-    p = await Player.select().where(Player.secret == secret)
+    p = await Player.objects().get(Player.secret == secret)
     if not p:
         raise HTTPException(status_code=400, detail="secret invalid")
+    return p
 
-@app.post('/groups', dependencies=[Depends(verify_secret)])
+@app.post('/groups')
 async def post_group(secret: Annotated[str, Header()], group: GroupModel):
+    """
+    Create a group
+    """
     if not group.name or len(group.name) < 3:
         raise HTTPException(status_code=400, detail="Group name must be at least 3 characters long")
     if await Group.exists().where(Group.name == group.name):
         raise HTTPException(status_code=409, detail="Group name already exists")
+    creator = await verify_secret(secret)
     g = Group(group.model_dump(exclude_none=True))
-    creator = await Player.objects().get(Player.secret == secret)
     await creator.add_m2m(
         g,
         m2m=Player.groups,
@@ -65,3 +69,39 @@ async def post_group(secret: Annotated[str, Header()], group: GroupModel):
     )
     g = await Group.objects().get(Group.name == group.name)
     return JSONResponse({"id": g.id})
+
+@app.get('/groups/{group_id}')
+async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut:
+    """
+    Get group info
+    """
+    player = await verify_secret(secret)
+    group = await Group.objects().get(Group.id == group_id)
+    members = await PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id)
+    if not any(p.player.id == player.id for p in members):
+        raise HTTPException(403, detail="You are not part of this group.")
+    tracks = await group.get_m2m(Group.tracks)
+    out = group.to_dict()
+    out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
+    out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
+    return GroupOut(**out)
+
+@app.post('/groups/join')
+async def join_group(secret: Annotated[str, Header()], name: Annotated[str, Body(embed=True)]) -> GroupOut:
+    """
+    Join group
+    """
+    group = await Group.objects().get(Group.name == name)
+    if not group:
+        raise HTTPException(404, f"Group with name {name} does not exist.")
+    player = await verify_secret(secret)
+    await group.add_m2m(
+        player,
+        m2m=Group.players
+    )
+    out = group.to_dict()
+    members = await PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group.id)
+    tracks = await group.get_m2m(Group.tracks)
+    out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
+    out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
+    return GroupOut(**out)

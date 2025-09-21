@@ -12,18 +12,32 @@ TABLES = Finder().get_table_classes()
 class TestEndpoints(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         await create_db_tables(*TABLES) 
-        await ModelBuilder.build(Player, defaults={"secret": "secret"})
+        await ModelBuilder.build(Player, defaults={"id": 1, "name": "1", "secret": "secret"})
 
     async def asyncTearDown(self):
         await drop_db_tables(*TABLES)
 
     async def test_group(self):
+        # test group creation
         headers = {"secret": "secret"}
         data = {
-            "name": "test"
+            "name": "test"        
         }
         response = client.post("/groups", headers=headers, json=data)
         assert response.status_code == 200
         assert response.json()["id"] == 1
         assert await Group.count() == 1
         assert await PlayerToGroup.count() == 1
+        # test group join
+        response = client.get("/groups/1", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["id"] == 1
+        await ModelBuilder.build(Player, defaults={"id": 2, "name": "2", "secret": "foo"})
+        response = client.get("/groups/1", headers={"secret": "foo"})
+        assert response.status_code == 403
+        response = client.post("/groups/join", headers={"secret": "foo"}, json=data)
+        for member in response.json()["players"]:
+            if member["name"] == "1":
+                assert member["admin"]
+            else:
+                assert not member["admin"]
