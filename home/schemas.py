@@ -17,9 +17,9 @@ GroupModel = create_pydantic_model(Group)
 class GroupUpdate(GroupModel):
     @field_validator('points_name')
     @classmethod
-    def ensure_length(cls, s):
-        if len(s) < 3:
-            raise ValueError("Must be at least 3 characters long")
+    def ensure_length(cls, s: str):
+        if len(s) < 3 or not s.isalnum():
+            raise ValueError("Must be at least 3 characters long. Only alphanumeric types allowed.")
         return s
     
     @field_validator('automated_amount')
