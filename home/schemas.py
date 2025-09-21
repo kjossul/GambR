@@ -1,6 +1,7 @@
 from piccolo.utils.pydantic import create_pydantic_model
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from models import *
+from datetime import timedelta
 
 class Auth(BaseModel):
     token: str
@@ -12,7 +13,44 @@ class PlayerOut(PlayerModel):
 
 TrackModel = create_pydantic_model(Track)
 
-GroupModel = create_pydantic_model(Group, include_default_columns=True)
+GroupModel = create_pydantic_model(Group)
+class GroupUpdate(GroupModel):
+    @field_validator('points_name')
+    @classmethod
+    def ensure_length(cls, s):
+        if len(s) < 3:
+            raise ValueError("Must be at least 3 characters long")
+        return s
+    
+    @field_validator('automated_amount')
+    @classmethod
+    def ensure_max_amount(cls, x):
+        if x > 5:
+            raise ValueError("You can't have more than 5 automated predictions")
+        return x
+        
+    @field_validator('automated_frequency')
+    @classmethod
+    def ensure_min_frequency(cls, f):
+        if f < timedelta(minutes=30):
+            raise ValueError("Frequency must be at least 30 minutes")
+        return f
+        
+    @field_validator('automated_open')
+    @classmethod
+    def ensure_max_open_window(cls, f):
+        if f > timedelta(minutes=10):
+            raise ValueError("Predictions can't be open longer than 10 minutes")
+        return f
+    
+    @field_validator('automated_end')
+    @classmethod
+    def ensure_max_prediciton_end(cls, f):
+        if f > timedelta(days=1):
+            raise ValueError("Predictions can't last longer than a day")
+        return f
+
 class GroupOut(GroupModel):
+    id: int
     players: list[PlayerOut]
     tracks: list[TrackModel]

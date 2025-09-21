@@ -28,16 +28,25 @@ class TestEndpoints(IsolatedAsyncioTestCase):
         assert response.json()["id"] == 1
         assert await Group.count() == 1
         assert await PlayerToGroup.count() == 1
-        # test group join
+        # test group endpoints
         response = client.get("/groups/1", headers=headers)
         assert response.status_code == 200
         assert response.json()["id"] == 1
+        new_settings = {
+            "points_name": "shutupi",
+            "automated_end": "PT1H"
+        }
+        response = client.post("/groups/1", headers=headers, json=new_settings)
+        assert await Group.exists().where(Group.points_name == "shutupi")
         await ModelBuilder.build(Player, defaults={"id": 2, "name": "2", "secret": "foo"})
         response = client.get("/groups/1", headers={"secret": "foo"})
         assert response.status_code == 403
-        response = client.post("/groups/players", headers={"secret": "foo"}, json=data)
+        # test group join
+        response = client.put("/groups/players", headers={"secret": "foo"}, params=data)
         for member in response.json()["players"]:
             if member["name"] == "1":
                 assert member["admin"]
             else:
                 assert not member["admin"]
+        response = client.delete("/groups/players", headers={"secret": "foo"}, params=data)
+        assert await PlayerToGroup.count() == 1

@@ -70,24 +70,8 @@ async def post_group(secret: Annotated[str, Header()], group: GroupModel):
     g = await Group.objects().get(Group.name == group.name)
     return JSONResponse({"id": g.id})
 
-@app.get('/groups/{group_id}')
-async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut:
-    """
-    Get group info
-    """
-    player = await verify_secret(secret)
-    group = await Group.objects().get(Group.id == group_id)
-    members = await PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id)
-    if not any(p.player.id == player.id for p in members):
-        raise HTTPException(403, detail="You are not part of this group.")
-    tracks = await group.get_m2m(Group.tracks)
-    out = group.to_dict()
-    out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
-    out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
-    return GroupOut(**out)
-
-@app.post('/groups/players')
-async def join_group(secret: Annotated[str, Header()], name: Annotated[str, Body(embed=True)]) -> GroupOut:
+@app.put('/groups/players')
+async def join_group(secret: Annotated[str, Header()], name: str) -> GroupOut:
     """
     Join group
     """
@@ -105,3 +89,52 @@ async def join_group(secret: Annotated[str, Header()], name: Annotated[str, Body
     out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
     out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
     return GroupOut(**out)
+
+@app.delete('/groups/players')
+async def leave_group(secret: Annotated[str, Header()], name: str):
+    """
+    leave group
+    """
+    group = await Group.objects().get(Group.name == name)
+    if not group:
+        raise HTTPException(404, f"Group with name {name} does not exist.")
+    player = await verify_secret(secret)    
+    await group.remove_m2m(
+        player,
+        m2m=Group.players
+    )
+    return JSONResponse("Group left successfully")
+
+@app.get('/groups/{group_id}')
+async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut:
+    """
+    Get group info
+    """
+    player = await verify_secret(secret)
+    group = await Group.objects().get(Group.id == group_id)
+    members = await PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id)
+    if not any(p.player.id == player.id for p in members):
+        raise HTTPException(403, detail="You are not part of this group.")
+    tracks = await group.get_m2m(Group.tracks)
+    out = group.to_dict()
+    out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
+    out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
+    return GroupOut(**out)
+
+@app.post('/groups/{group_id}')
+async def update_group(secret: Annotated[str, Header()], group_id: int, group: GroupUpdate):
+    """
+    Update group settings
+    """
+    player = await verify_secret(secret)
+    g = await Group.objects().get(Group.id == group_id)
+    p = await PlayerToGroup.objects().get(
+        (PlayerToGroup.player == player.id) & (PlayerToGroup.group == group_id)
+    )
+    if not p.admin:
+        raise HTTPException(403, "You must be admin to change group settings.")
+    # todo validate some settings if needed
+    for k,v in group.model_dump(exclude_none=True).items():
+        setattr(g, k, v)
+    await g.save()
+    return JSONResponse("Values updated successfully")

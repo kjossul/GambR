@@ -31,6 +31,7 @@ class Group(Table):
     Group of players
     """
     name = Varchar(unique=True)
+    # todo add password maybe?
     players = M2M(LazyTableReference("PlayerToGroup", module_path=__name__))
     tracks = M2M(LazyTableReference("TrackToGroup", module_path=__name__))
     # can be used to set custom name for the group points
