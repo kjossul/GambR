@@ -138,3 +138,18 @@ async def update_group(secret: Annotated[str, Header()], group_id: int, group: G
         setattr(g, k, v)
     await g.save()
     return JSONResponse("Values updated successfully")
+
+@app.delete('/groups/{group_id}')
+async def delete_group(secret: Annotated[str, Header()], group_id: int):
+    """
+    Delete group
+    """
+    player = await verify_secret(secret)
+    g = await Group.objects().get(Group.id == group_id)
+    p = await PlayerToGroup.objects().get(
+        (PlayerToGroup.player == player.id) & (PlayerToGroup.group == group_id)
+    )
+    if not p.admin:
+        raise HTTPException(403, "You must be admin to delete the group")
+    await g.remove()
+    return JSONResponse("Group deleted successfully.")

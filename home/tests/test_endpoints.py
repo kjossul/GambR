@@ -48,5 +48,8 @@ class TestEndpoints(IsolatedAsyncioTestCase):
                 assert member["admin"]
             else:
                 assert not member["admin"]
+            assert member["points"] == 1000
         response = client.delete("/groups/players", headers={"secret": "foo"}, params=data)
         assert await PlayerToGroup.count() == 1
+        response = client.delete("/groups/1", headers=headers)
+        assert await Group.count() == 0
