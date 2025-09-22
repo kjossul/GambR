@@ -1,11 +1,12 @@
 from typing import Annotated
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, Query, HTTPException
 from fastapi.responses import JSONResponse
 from .models import *
 from .schemas import *
 import requests
 import secrets
 import asyncio
+from uuid import UUID
 
 app = FastAPI()
 
@@ -42,108 +43,134 @@ async def verify_secret(secret: Annotated[str, Header()]):
         raise HTTPException(status_code=400, detail="secret invalid")
     return p
 
-@app.post('/groups')
-async def post_group(secret: Annotated[str, Header()], group: GroupModel):
+@app.post('/clubs')
+async def post_club(secret: Annotated[str, Header()], club: ClubModel):
     """
-    Create a group
+    Create a club
     """
-    if not group.name or len(group.name) < 3:
-        raise HTTPException(status_code=400, detail="Group name must be at least 3 characters long")
-    if await Group.exists().where(Group.name == group.name):
-        raise HTTPException(status_code=409, detail="Group name already exists")
+    if not club.name or len(club.name) < 3:
+        raise HTTPException(status_code=400, detail="Club name must be at least 3 characters long")
+    if await Club.exists().where(Club.name == club.name):
+        raise HTTPException(status_code=409, detail="Club name already exists")
     creator = await verify_secret(secret)
-    g = Group(group.model_dump(exclude_none=True))
+    g = Club(club.model_dump(exclude_none=True))
     await creator.add_m2m(
         g,
-        m2m=Player.groups,
+        m2m=Player.clubs,
         extra_column_values={"admin": True}
     )
-    g = await Group.objects().get(Group.name == group.name)
+    g = await Club.objects().get(Club.name == club.name)
     return JSONResponse({"id": g.id})
 
-def get_player_and_group(secret, group_name):
-    return asyncio.gather(
-        Group.objects().get(Group.name == group_name).run(),
+async def get_player_and_club(secret, club_name):
+    club, player = await asyncio.gather(
+        Club.objects().get(Club.name == club_name).run(),
         verify_secret(secret)
     )
+    if not club:
+        raise HTTPException(404, f"Club with name {club_name} does not exist.")
+    return club, player
 
-@app.put('/groups/players')
-async def join_group(secret: Annotated[str, Header()], name: str) -> GroupOut:
+@app.put('/clubs/players')
+async def join_club(secret: Annotated[str, Header()], name: str) -> ClubOut:
     """
-    Join group
+    Join club
     """
-    group, player = await get_player_and_group(secret, name)
-    if not group:
-        raise HTTPException(404, f"Group with name {name} does not exist.")
-    await group.add_m2m(
+    club, player = await get_player_and_club(secret, name)
+    await club.add_m2m(
         player,
-        m2m=Group.players
+        m2m=Club.players
     )
-    out = group.to_dict()
-    members = await PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group.id)
-    tracks = await group.get_m2m(Group.tracks)
+    out = club.to_dict()
+    members = await PlayerToClub.objects(PlayerToClub.player).where(PlayerToClub.club.id == club.id)
+    tracks = await club.get_m2m(Club.tracks)
     out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
     out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
-    return GroupOut(**out)
+    return ClubOut(**out)
 
-@app.delete('/groups/players')
-async def leave_group(secret: Annotated[str, Header()], name: str):
+@app.delete('/clubs/players')
+async def leave_club(secret: Annotated[str, Header()], name: str):
     """
-    leave group
+    leave club
     """
-    group, player = await get_player_and_group(secret, name)
-    if not group:
-        raise HTTPException(404, f"Group with name {name} does not exist.")
-    await group.remove_m2m(
+    club, player = await get_player_and_club(secret, name)
+    await club.remove_m2m(
         player,
-        m2m=Group.players
+        m2m=Club.players
     )
-    return JSONResponse("Group left successfully")
+    return JSONResponse("Club left successfully")
 
-async def validate_membership(secret, group_id, requires_admin=False):
-    group, members, player = await asyncio.gather(
-        Group.objects().get(Group.id == group_id).run(),
-        PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id).run(),
+async def validate_membership(secret, club_id, requires_admin=False):
+    club, members, player = await asyncio.gather(
+        Club.objects().get(Club.id == club_id).run(),
+        PlayerToClub.objects(PlayerToClub.player).where(PlayerToClub.club.id == club_id).run(),
         verify_secret(secret)
     )
-    if not group:
-        raise HTTPException(404, "Group does not exist.")
+    if not club:
+        raise HTTPException(404, "Club does not exist.")
     try:
         m = next(m for m in members if m.player.id == player.id)
         if requires_admin and not m.admin:
-            raise HTTPException(403, "You must be group admin to perform this action.")
+            raise HTTPException(403, "You must be club admin to perform this action.")
     except StopIteration:
-        raise HTTPException(403, "You are not part of this group.")
-    return group, members
+        raise HTTPException(403, "You are not part of this club.")
+    return club, members
 
-@app.get('/groups/{group_id}')
-async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut:
+@app.get('/clubs/{club_id}')
+async def get_club(secret: Annotated[str, Header()], club_id: int) -> ClubOut:
     """
-    Get group info
+    Get club info
     """
-    group, members = await validate_membership(secret, group_id)
-    tracks = await group.get_m2m(Group.tracks)
-    out = group.to_dict()
+    club, members = await validate_membership(secret, club_id)
+    tracks = await club.get_m2m(Club.tracks)
+    out = club.to_dict()
     out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
     out["tracks"] = [TrackModel(**t.to_dict()) for t in tracks]
-    return GroupOut(**out)
+    return ClubOut(**out)
 
-@app.post('/groups/{group_id}')
-async def update_group(secret: Annotated[str, Header()], group_id: int, group: GroupUpdate):
+@app.post('/clubs/{club_id}')
+async def update_club(secret: Annotated[str, Header()], club_id: int, club: ClubUpdate):
     """
-    Update group settings
+    Update club settings
     """
-    g, _ = await validate_membership(secret, group_id, requires_admin=True)
-    for k,v in group.model_dump(exclude_none=True).items():
+    g, _ = await validate_membership(secret, club_id, requires_admin=True)
+    for k,v in club.model_dump(exclude_none=True).items():
         setattr(g, k, v)
     await g.save()
     return JSONResponse("Values updated successfully")
 
-@app.delete('/groups/{group_id}')
-async def delete_group(secret: Annotated[str, Header()], group_id: int):
+@app.delete('/clubs/{club_id}')
+async def delete_club(secret: Annotated[str, Header()], club_id: int):
     """
-    Delete group
+    Delete club
     """
-    g, _ = await validate_membership(secret, group_id, requires_admin=True)
+    g, _ = await validate_membership(secret, club_id, requires_admin=True)
     await g.remove()
-    return JSONResponse("Group deleted successfully.")
+    return JSONResponse("Club deleted successfully.")
+
+@app.put('/clubs/{club_id}/tracks')
+async def add_club_tracks(secret: Annotated[str, Header()], club_id: int, tracks: list[TrackModel]):
+    """
+    add track(s) to a club
+    """
+    g, _ = await validate_membership(secret, club_id, requires_admin=True)
+    ts = await asyncio.gather(*[Track.objects().get_or_create(
+        Track.uuid == t.uuid, defaults={Track.name: t.name}
+    ).run() for t in tracks])
+    await asyncio.gather(*[g.add_m2m(t, m2m=Club.tracks).run() for t in ts])
+    return JSONResponse("Tracks added successfully")
+
+@app.delete('/clubs/{club_id}/tracks')
+async def remove_club_tracks(secret: Annotated[str, Header()], club_id: int, uuids: Annotated[list[UUID], Query()]):
+    """
+    remove track(s) from a club
+    """
+    g, _ = await validate_membership(secret, club_id, requires_admin=True)
+    ts = await Track.objects().where(
+        Track.uuid.is_in(uuids)
+    )
+    await g.remove_m2m(
+        *ts,
+        m2m=Club.tracks
+    )
+    return JSONResponse("Tracks removed successfully")

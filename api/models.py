@@ -2,6 +2,7 @@ from piccolo.table import Table
 from piccolo.columns import *
 from piccolo.columns.m2m import M2M
 from datetime import timedelta
+from piccolo.constraint import UniqueConstraint
 
 STARTING_POINTS = 1000
 
@@ -13,7 +14,7 @@ class Player(Table):
     name = Varchar()
     # used for authentication through OpenPlanet
     secret = Varchar(64, unique=True)
-    groups = M2M(LazyTableReference("PlayerToGroup", module_path=__name__))
+    clubs = M2M(LazyTableReference("PlayerToClub", module_path=__name__))
     bets = M2M(LazyTableReference("Bet", module_path=__name__))
 
 
@@ -23,18 +24,18 @@ class Track(Table):
     """
     uuid = UUID(unique=True)
     name = Varchar()
-    groups = M2M(LazyTableReference("TrackToGroup", module_path=__name__))
+    clubs = M2M(LazyTableReference("TrackToClub", module_path=__name__))
 
 
-class Group(Table):
+class Club(Table):
     """
-    Group of players
+    Club of players
     """
     name = Varchar(unique=True)
     # todo add password maybe?
-    players = M2M(LazyTableReference("PlayerToGroup", module_path=__name__))
-    tracks = M2M(LazyTableReference("TrackToGroup", module_path=__name__))
-    # can be used to set custom name for the group points
+    players = M2M(LazyTableReference("PlayerToClub", module_path=__name__))
+    tracks = M2M(LazyTableReference("TrackToClub", module_path=__name__))
+    # can be used to set custom name for the club points
     points_name = Varchar(default="points")
     # 0: everyone allowed to make predictions, 1: only admins
     restricted = Boolean()
@@ -50,24 +51,26 @@ class Group(Table):
     automated_end = Interval(default=timedelta(hours=6))
 
 
-class PlayerToGroup(Table):
+class PlayerToClub(Table):
     """
-    Relationship table for players that are part of groups
+    Relationship table for players that are part of clubs
     """
     player = ForeignKey(Player)
-    group = ForeignKey(Group)
+    club = ForeignKey(Club)
     points = Integer(default=STARTING_POINTS)
     admin = Boolean()
+    player_club_constraint = UniqueConstraint(["player", "club"])
 
 
-class TrackToGroup(Table):
+class TrackToClub(Table):
     """
-    Relationship table for tracks that belong into a group
+    Relationship table for tracks that belong into a club
     """
     track = ForeignKey(Track)
-    group = ForeignKey(Group)
+    club = ForeignKey(Club)
     # amount of predictions ran on this track
     counter = Integer()
+    track_club_constraint = UniqueConstraint(["track", "club"])
 
 
 class Prediction(Table):
@@ -75,7 +78,7 @@ class Prediction(Table):
     Twitch-style predictions on TrackMania tracks
     """
     track = ForeignKey(Track)
-    group = ForeignKey(Group, null=False)
+    club = ForeignKey(Club, null=False)
     # 0: versus, 1: guess the time, 2: raffle
     type = SmallInt()
     # when the window to perform bets on this prediction closes
@@ -97,6 +100,7 @@ class PlayerToPrediction(Table):
     prediction = ForeignKey(Prediction)
     # value to be filled when the prediction expires
     result = Integer()
+    player_prediction_constraint = UniqueConstraint(["player", "prediction"])
 
 
 class Bet(Table):
@@ -109,3 +113,4 @@ class Bet(Table):
     outcome = Integer()
     # how many points have been bet
     points = Integer()
+    bet_constraint = UniqueConstraint(["player", "prediction"])

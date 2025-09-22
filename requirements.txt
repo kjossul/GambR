@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-piccolo[postgres]>=1.0.0
+https://github.com/sinisaos/piccolo/archive/dev.zip  # piccolo fork for m2m QoL
 piccolo_admin>=1.0.0
 apscheduler
 sqlalchemy

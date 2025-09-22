@@ -13,8 +13,8 @@ class PlayerOut(PlayerModel):
 
 TrackModel = create_pydantic_model(Track)
 
-GroupModel = create_pydantic_model(Group)
-class GroupUpdate(GroupModel):
+ClubModel = create_pydantic_model(Club)
+class ClubUpdate(ClubModel):
     @field_validator('points_name')
     @classmethod
     def ensure_length(cls, s: str):
@@ -50,7 +50,7 @@ class GroupUpdate(GroupModel):
             raise ValueError("Predictions can't last longer than a day, and have a minimum duration of 1 hour")
         return f
 
-class GroupOut(GroupModel):
+class ClubOut(ClubModel):
     id: int
     players: list[PlayerOut]
     tracks: list[TrackModel]
