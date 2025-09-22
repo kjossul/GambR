@@ -5,6 +5,7 @@ from .models import *
 from .schemas import *
 import requests
 import secrets
+import asyncio
 
 app = FastAPI()
 
@@ -60,15 +61,21 @@ async def post_group(secret: Annotated[str, Header()], group: GroupModel):
     g = await Group.objects().get(Group.name == group.name)
     return JSONResponse({"id": g.id})
 
+def get_player_and_group(secret, group_id=None, group_name=None):
+    filter = Group.id == group_id if group_id else Group.name == group_name
+    return asyncio.gather(
+        Group.objects().get(filter).run(),
+        verify_secret(secret)
+    )
+
 @app.put('/groups/players')
 async def join_group(secret: Annotated[str, Header()], name: str) -> GroupOut:
     """
     Join group
     """
-    group = await Group.objects().get(Group.name == name)
+    group, player = await get_player_and_group(secret, group_name=name)
     if not group:
         raise HTTPException(404, f"Group with name {name} does not exist.")
-    player = await verify_secret(secret)
     await group.add_m2m(
         player,
         m2m=Group.players
@@ -85,10 +92,9 @@ async def leave_group(secret: Annotated[str, Header()], name: str):
     """
     leave group
     """
-    group = await Group.objects().get(Group.name == name)
+    group, player = await get_player_and_group(secret, group_name=name)
     if not group:
         raise HTTPException(404, f"Group with name {name} does not exist.")
-    player = await verify_secret(secret)    
     await group.remove_m2m(
         player,
         m2m=Group.players
@@ -100,8 +106,7 @@ async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut
     """
     Get group info
     """
-    player = await verify_secret(secret)
-    group = await Group.objects().get(Group.id == group_id)
+    group, player = await get_player_and_group(secret, group_id=group_id)
     members = await PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id)
     if not any(p.player.id == player.id for p in members):
         raise HTTPException(403, detail="You are not part of this group.")
@@ -116,8 +121,7 @@ async def update_group(secret: Annotated[str, Header()], group_id: int, group: G
     """
     Update group settings
     """
-    player = await verify_secret(secret)
-    g = await Group.objects().get(Group.id == group_id)
+    g, player = await get_player_and_group(secret, group_id=group_id)
     p = await PlayerToGroup.objects().get(
         (PlayerToGroup.player == player.id) & (PlayerToGroup.group == group_id)
     )
@@ -134,8 +138,7 @@ async def delete_group(secret: Annotated[str, Header()], group_id: int):
     """
     Delete group
     """
-    player = await verify_secret(secret)
-    g = await Group.objects().get(Group.id == group_id)
+    g, player = await get_player_and_group(secret, group_id=group_id)
     p = await PlayerToGroup.objects().get(
         (PlayerToGroup.player == player.id) & (PlayerToGroup.group == group_id)
     )
