@@ -3,7 +3,7 @@ from piccolo.testing.model_builder import ModelBuilder
 from piccolo.table import create_db_tables, drop_db_tables
 from piccolo.conf.apps import Finder
 from fastapi.testclient import TestClient
-from ..endpoints import app
+from ...app import app
 from ..models import *
 
 client = TestClient(app)
@@ -23,33 +23,33 @@ class TestEndpoints(IsolatedAsyncioTestCase):
         data = {
             "name": "test"        
         }
-        response = client.post("/groups", headers=headers, json=data)
+        response = client.post("api/groups", headers=headers, json=data)
         assert response.status_code == 200
         assert response.json()["id"] == 1
         assert await Group.count() == 1
         assert await PlayerToGroup.count() == 1
         # test group endpoints
-        response = client.get("/groups/1", headers=headers)
+        response = client.get("api/groups/1", headers=headers)
         assert response.status_code == 200
         assert response.json()["id"] == 1
         new_settings = {
             "points_name": "shutupi",
             "automated_end": "PT1H"
         }
-        response = client.post("/groups/1", headers=headers, json=new_settings)
+        response = client.post("api/groups/1", headers=headers, json=new_settings)
         assert await Group.exists().where(Group.points_name == "shutupi")
         await ModelBuilder.build(Player, defaults={"id": 2, "name": "2", "secret": "foo"})
-        response = client.get("/groups/1", headers={"secret": "foo"})
+        response = client.get("api/groups/1", headers={"secret": "foo"})
         assert response.status_code == 403
         # test group join
-        response = client.put("/groups/players", headers={"secret": "foo"}, params=data)
+        response = client.put("api/groups/players", headers={"secret": "foo"}, params=data)
         for member in response.json()["players"]:
             if member["name"] == "1":
                 assert member["admin"]
             else:
                 assert not member["admin"]
             assert member["points"] == 1000
-        response = client.delete("/groups/players", headers={"secret": "foo"}, params=data)
+        response = client.delete("api/groups/players", headers={"secret": "foo"}, params=data)
         assert await PlayerToGroup.count() == 1
-        response = client.delete("/groups/1", headers=headers)
+        response = client.delete("api/groups/1", headers=headers)
         assert await Group.count() == 0

@@ -5,15 +5,23 @@ from fastapi.staticfiles import StaticFiles
 from piccolo.engine import engine_finder
 from piccolo_admin.endpoints import create_admin
 
-from home.endpoints import app as home_app
-from home.piccolo_app import APP_CONFIG
+from api.endpoints import app as api
+from api.piccolo_app import APP_CONFIG
+from api.scheduler import scheduler
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
 
 async def open_database_connection_pool():
     try:
         engine = engine_finder()
         await engine.start_connection_pool()
-    except Exception:
+        conf = engine.config
+        conn_url = f"postgresql://{conf['user']}:{conf['password']}@{conf['host']}:{conf['port']}/{conf['database']}"
+        jobstores = {"default": SQLAlchemyJobStore(url=conn_url)}
+        scheduler.configure(jobstores=jobstores)
+        scheduler.start()
+    except Exception as e:
+        print(e)
         print("Unable to connect to the database")
 
 
@@ -21,6 +29,7 @@ async def close_database_connection_pool():
     try:
         engine = engine_finder()
         await engine.close_connection_pool()
+        scheduler.shutdown()
     except Exception:
         print("Unable to connect to the database")
 
@@ -32,11 +41,11 @@ async def lifespan(app: FastAPI):
     await close_database_connection_pool()
 
 
-app = FastAPI()
-app.mount("/", home_app)
+app = FastAPI(lifespan=lifespan)
+app.mount("/api", api)
+# todo remove from production maybe
 app.mount("/admin", create_admin(
     tables=APP_CONFIG.table_classes,
     # Required when running under HTTPS:
     # allowed_hosts=['my_site.com']    
 ))
-app.mount("/static", StaticFiles(directory="static"), name="static")

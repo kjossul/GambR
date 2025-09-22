@@ -1,22 +1,12 @@
-import os
 from typing import Annotated
-from fastapi import FastAPI, Request, Depends, Header, HTTPException, Body
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse
 from .models import *
 from .schemas import *
 import requests
 import secrets
 
 app = FastAPI()
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-
-@app.get('/', response_class=HTMLResponse)
-async def get_root(request: Request):
-    return templates.TemplateResponse("home.html.jinja", {
-        "request": request,
-        "title": "Piccolo + ASGI"
-    })
 
 @app.post('/auth')
 async def auth(auth: Auth):
