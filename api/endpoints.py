@@ -61,10 +61,9 @@ async def post_group(secret: Annotated[str, Header()], group: GroupModel):
     g = await Group.objects().get(Group.name == group.name)
     return JSONResponse({"id": g.id})
 
-def get_player_and_group(secret, group_id=None, group_name=None):
-    filter = Group.id == group_id if group_id else Group.name == group_name
+def get_player_and_group(secret, group_name):
     return asyncio.gather(
-        Group.objects().get(filter).run(),
+        Group.objects().get(Group.name == group_name).run(),
         verify_secret(secret)
     )
 
@@ -73,7 +72,7 @@ async def join_group(secret: Annotated[str, Header()], name: str) -> GroupOut:
     """
     Join group
     """
-    group, player = await get_player_and_group(secret, group_name=name)
+    group, player = await get_player_and_group(secret, name)
     if not group:
         raise HTTPException(404, f"Group with name {name} does not exist.")
     await group.add_m2m(
@@ -92,7 +91,7 @@ async def leave_group(secret: Annotated[str, Header()], name: str):
     """
     leave group
     """
-    group, player = await get_player_and_group(secret, group_name=name)
+    group, player = await get_player_and_group(secret, name)
     if not group:
         raise HTTPException(404, f"Group with name {name} does not exist.")
     await group.remove_m2m(
@@ -101,13 +100,18 @@ async def leave_group(secret: Annotated[str, Header()], name: str):
     )
     return JSONResponse("Group left successfully")
 
+def get_group_and_members(secret, group_id):
+    return asyncio.gather(
+        Group.objects().get(Group.id == group_id).run(),
+        PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id).run(),
+        verify_secret(secret)
+    )
 @app.get('/groups/{group_id}')
 async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut:
     """
     Get group info
     """
-    group, player = await get_player_and_group(secret, group_id=group_id)
-    members = await PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id)
+    group, members, player = await get_group_and_members(secret, group_id)
     if not any(p.player.id == player.id for p in members):
         raise HTTPException(403, detail="You are not part of this group.")
     tracks = await group.get_m2m(Group.tracks)
@@ -121,13 +125,12 @@ async def update_group(secret: Annotated[str, Header()], group_id: int, group: G
     """
     Update group settings
     """
-    g, player = await get_player_and_group(secret, group_id=group_id)
-    p = await PlayerToGroup.objects().get(
-        (PlayerToGroup.player == player.id) & (PlayerToGroup.group == group_id)
-    )
+    g, members, player = await get_group_and_members(secret, group_id)
+    if not g:
+        raise HTTPException(404, "Group does not exist.")
+    p = next(m for m in members if m.player.id == player.id)
     if not p.admin:
         raise HTTPException(403, "You must be admin to change group settings.")
-    # todo validate some settings if needed
     for k,v in group.model_dump(exclude_none=True).items():
         setattr(g, k, v)
     await g.save()
@@ -138,10 +141,10 @@ async def delete_group(secret: Annotated[str, Header()], group_id: int):
     """
     Delete group
     """
-    g, player = await get_player_and_group(secret, group_id=group_id)
-    p = await PlayerToGroup.objects().get(
-        (PlayerToGroup.player == player.id) & (PlayerToGroup.group == group_id)
-    )
+    g, members, player = await get_group_and_members(secret, group_id)
+    if not g:
+        raise HTTPException(404, "Group does not exist.")
+    p = next(m for m in members if m.player.id == player.id)
     if not p.admin:
         raise HTTPException(403, "You must be admin to delete the group")
     await g.remove()
