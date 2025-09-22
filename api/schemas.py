@@ -46,8 +46,8 @@ class GroupUpdate(GroupModel):
     @field_validator('automated_end')
     @classmethod
     def ensure_max_prediciton_end(cls, f):
-        if f > timedelta(days=1):
-            raise ValueError("Predictions can't last longer than a day")
+        if not timedelta(hours=1) <= f <= timedelta(days=1):
+            raise ValueError("Predictions can't last longer than a day, and have a minimum duration of 1 hour")
         return f
 
 class GroupOut(GroupModel):

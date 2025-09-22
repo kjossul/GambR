@@ -100,20 +100,28 @@ async def leave_group(secret: Annotated[str, Header()], name: str):
     )
     return JSONResponse("Group left successfully")
 
-def get_group_and_members(secret, group_id):
-    return asyncio.gather(
+async def validate_membership(secret, group_id, requires_admin=False):
+    group, members, player = await asyncio.gather(
         Group.objects().get(Group.id == group_id).run(),
         PlayerToGroup.objects(PlayerToGroup.player).where(PlayerToGroup.group.id == group_id).run(),
         verify_secret(secret)
     )
+    if not group:
+        raise HTTPException(404, "Group does not exist.")
+    try:
+        m = next(m for m in members if m.player.id == player.id)
+        if requires_admin and not m.admin:
+            raise HTTPException(403, "You must be group admin to perform this action.")
+    except StopIteration:
+        raise HTTPException(403, "You are not part of this group.")
+    return group, members
+
 @app.get('/groups/{group_id}')
 async def get_group(secret: Annotated[str, Header()], group_id: int) -> GroupOut:
     """
     Get group info
     """
-    group, members, player = await get_group_and_members(secret, group_id)
-    if not any(p.player.id == player.id for p in members):
-        raise HTTPException(403, detail="You are not part of this group.")
+    group, members = await validate_membership(secret, group_id)
     tracks = await group.get_m2m(Group.tracks)
     out = group.to_dict()
     out["players"] = [PlayerOut(points=p.points, admin=p.admin, **p.player.to_dict()) for p in members]
@@ -125,12 +133,7 @@ async def update_group(secret: Annotated[str, Header()], group_id: int, group: G
     """
     Update group settings
     """
-    g, members, player = await get_group_and_members(secret, group_id)
-    if not g:
-        raise HTTPException(404, "Group does not exist.")
-    p = next(m for m in members if m.player.id == player.id)
-    if not p.admin:
-        raise HTTPException(403, "You must be admin to change group settings.")
+    g, _ = await validate_membership(secret, group_id, requires_admin=True)
     for k,v in group.model_dump(exclude_none=True).items():
         setattr(g, k, v)
     await g.save()
@@ -141,11 +144,6 @@ async def delete_group(secret: Annotated[str, Header()], group_id: int):
     """
     Delete group
     """
-    g, members, player = await get_group_and_members(secret, group_id)
-    if not g:
-        raise HTTPException(404, "Group does not exist.")
-    p = next(m for m in members if m.player.id == player.id)
-    if not p.admin:
-        raise HTTPException(403, "You must be admin to delete the group")
+    g, _ = await validate_membership(secret, group_id, requires_admin=True)
     await g.remove()
     return JSONResponse("Group deleted successfully.")
