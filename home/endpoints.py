@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import FastAPI, Request, Depends, Header, HTTPException, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from models import *
-from schemas import *
+from .models import *
+from .schemas import *
 import requests
 import secrets
 

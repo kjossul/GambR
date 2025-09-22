@@ -1,6 +1,6 @@
 from piccolo.utils.pydantic import create_pydantic_model
 from pydantic import BaseModel, field_validator
-from models import *
+from .models import *
 from datetime import timedelta
 
 class Auth(BaseModel):
