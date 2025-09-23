@@ -5,3 +5,4 @@ piccolo_admin>=1.0.0
 apscheduler
 sqlalchemy
 psycopg2
+slowapi

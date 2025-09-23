@@ -1,6 +1,9 @@
 from typing import Annotated
-from fastapi import FastAPI, Header, Query, HTTPException
+from fastapi import FastAPI, Header, Query, HTTPException, Request
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from .models import *
 from .schemas import *
 import requests
@@ -8,10 +11,15 @@ import secrets
 import asyncio
 from uuid import UUID
 
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 @app.post('/auth')
-async def auth(auth: Auth):
+@limiter.limit("1/minute")
+async def auth(request: Request, auth: Auth):
     # send authentication from plugin to openplanet to verify client
     op_url = "https://openplanet.dev/api/auth/validate"
     headers = {
