@@ -16,7 +16,7 @@ APP_CONFIG = AppConfig(
     migrations_folder_path=os.path.join(
         CURRENT_DIRECTORY, "piccolo_migrations"
     ),
-    table_classes=table_finder(modules=["api.models"], exclude_imported=True),
+    table_classes=table_finder(modules=["api.tables"], exclude_imported=True),
     migration_dependencies=[],
     commands=[],
 )

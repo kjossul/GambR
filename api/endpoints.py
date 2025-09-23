@@ -4,8 +4,8 @@ from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from .tables import *
 from .models import *
-from .schemas import *
 import requests
 import secrets
 import asyncio
@@ -28,15 +28,16 @@ async def auth(request: Request, auth: Auth):
     data = {
         "token": auth.token,
         "secret": None
-    }  # todo (validate data before sending also to avoid unnecessary calls)
+    }
     r = requests.post(op_url, data=data, headers=headers)
     user = r.json()
     if "error" in user:
         raise HTTPException(status_code=400, detail="Invalid authentication")
     # generate unique secret and update player table
-    token = secrets.token_hex(64)
+    # TODO move to jwt
+    token = secrets.token_hex(32)
     while await Player.exists().where(Player.secret == token):
-        token = secrets.token_hex(64)
+        token = secrets.token_hex(32)
     await Player.insert(
         Player(uuid=user["account_id"], name=user["display_name"], secret=token)
     ).on_conflict(

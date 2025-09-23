@@ -1,116 +1,56 @@
-from piccolo.table import Table
-from piccolo.columns import *
-from piccolo.columns.m2m import M2M
+from piccolo.utils.pydantic import create_pydantic_model
+from pydantic import BaseModel, field_validator
+from .tables import *
 from datetime import timedelta
-from piccolo.constraint import UniqueConstraint
 
-STARTING_POINTS = 1000
+class Auth(BaseModel):
+    token: str
 
-class Player(Table):
-    """
-    TrackMania player
-    """
-    uuid = UUID(unique=True)
-    name = Varchar()
-    # used for authentication through OpenPlanet
-    secret = Varchar(64, unique=True)
-    clubs = M2M(LazyTableReference("PlayerToClub", module_path=__name__))
-    bets = M2M(LazyTableReference("Bet", module_path=__name__))
+PlayerModel = create_pydantic_model(Player, exclude_columns=(Player.secret,))
+class PlayerOut(PlayerModel):
+    points: int
+    admin: bool
 
+TrackModel = create_pydantic_model(Track)
 
-class Track(Table):
-    """
-    A TrackMania track/map
-    """
-    uuid = UUID(unique=True)
-    name = Varchar()
-    clubs = M2M(LazyTableReference("TrackToClub", module_path=__name__))
+ClubModel = create_pydantic_model(Club)
+class ClubUpdate(ClubModel):
+    @field_validator('points_name')
+    @classmethod
+    def ensure_length(cls, s: str):
+        if len(s) < 3 or not s.isalnum():
+            raise ValueError("Must be at least 3 characters long. Only alphanumeric types allowed.")
+        return s
+    
+    @field_validator('automated_amount')
+    @classmethod
+    def ensure_max_amount(cls, x):
+        if x > 5:
+            raise ValueError("You can't have more than 5 automated predictions")
+        return x
+        
+    @field_validator('automated_frequency')
+    @classmethod
+    def ensure_min_frequency(cls, f):
+        if f < timedelta(minutes=30):
+            raise ValueError("Frequency must be at least 30 minutes")
+        return f
+        
+    @field_validator('automated_open')
+    @classmethod
+    def ensure_max_open_window(cls, f):
+        if f > timedelta(minutes=10):
+            raise ValueError("Predictions can't be open longer than 10 minutes")
+        return f
+    
+    @field_validator('automated_end')
+    @classmethod
+    def ensure_max_prediciton_end(cls, f):
+        if not timedelta(hours=1) <= f <= timedelta(days=1):
+            raise ValueError("Predictions can't last longer than a day, and have a minimum duration of 1 hour")
+        return f
 
-
-class Club(Table):
-    """
-    Club of players
-    """
-    name = Varchar(unique=True)
-    # todo add password maybe?
-    players = M2M(LazyTableReference("PlayerToClub", module_path=__name__))
-    tracks = M2M(LazyTableReference("TrackToClub", module_path=__name__))
-    # can be used to set custom name for the club points
-    points_name = Varchar(default="points")
-    # 0: everyone allowed to make predictions, 1: only admins
-    restricted = Boolean()
-    # 0: hidden, 1: public
-    visibility = Boolean()
-    # number of automated predictions to be created periodically
-    automated_amount = SmallInt(default=2)
-    # frequency at which automated predictions are performed
-    automated_frequency = Interval(default=timedelta(minutes=30))
-    # interval for which predictions are open
-    automated_open = Interval(default=timedelta(minutes=5))
-    # when to check for prediction results after it's created
-    automated_end = Interval(default=timedelta(hours=6))
-
-
-class PlayerToClub(Table):
-    """
-    Relationship table for players that are part of clubs
-    """
-    player = ForeignKey(Player)
-    club = ForeignKey(Club)
-    points = Integer(default=STARTING_POINTS)
-    admin = Boolean()
-    player_club_constraint = UniqueConstraint(["player", "club"])
-
-
-class TrackToClub(Table):
-    """
-    Relationship table for tracks that belong into a club
-    """
-    track = ForeignKey(Track)
-    club = ForeignKey(Club)
-    # amount of predictions ran on this track
-    counter = Integer()
-    track_club_constraint = UniqueConstraint(["track", "club"])
-
-
-class Prediction(Table):
-    """
-    Twitch-style predictions on TrackMania tracks
-    """
-    track = ForeignKey(Track)
-    club = ForeignKey(Club, null=False)
-    # 0: versus, 1: guess the time, 2: raffle
-    type = SmallInt()
-    # when the window to perform bets on this prediction closes
-    close_time = Timestamp()
-    # when the prediction ends and results are computed
-    end_time = Timestamp()
-    # players whose results on the track decide the outcome of the prediction
-    # in case of raffles, all players that join the raffle are added as a protagonist
-    protagonists = M2M(LazyTableReference(
-        "PlayerToPrediction", module_path=__name__))
-    bets = M2M(LazyTableReference("Bet", module_path=__name__))
-
-
-class PlayerToPrediction(Table):
-    """
-    Relationship that tells which players are the protagonists / topic of each prediction
-    """
-    player = ForeignKey(Player)
-    prediction = ForeignKey(Prediction)
-    # value to be filled when the prediction expires
-    result = Integer()
-    player_prediction_constraint = UniqueConstraint(["player", "prediction"])
-
-
-class Bet(Table):
-    """
-    Relationship that tells which player is betting on which prediction
-    """
-    player = ForeignKey(Player)
-    prediction = ForeignKey(Prediction)
-    # which outcome has the player betted on
-    outcome = Integer()
-    # how many points have been bet
-    points = Integer()
-    bet_constraint = UniqueConstraint(["player", "prediction"])
+class ClubOut(ClubModel):
+    id: int
+    players: list[PlayerOut]
+    tracks: list[TrackModel]

@@ -5,7 +5,7 @@ from piccolo.table import create_db_tables, drop_db_tables
 from piccolo.conf.apps import Finder
 from fastapi.testclient import TestClient
 from ..endpoints import app
-from ..models import *
+from ..tables import *
 
 client = TestClient(app)
 TABLES = Finder().get_table_classes()

@@ -6,3 +6,6 @@ apscheduler
 sqlalchemy
 psycopg2
 slowapi
+nadeo-api
+platformdirs
+git+https://github.com/ezio416/py-nadeo-api.git
