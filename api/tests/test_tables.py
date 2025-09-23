@@ -8,7 +8,7 @@ from datetime import datetime
 from ..tables import *
 
 TABLES = Finder().get_table_classes()
-timestamps = [datetime.today().replace(hour=i) for i in range(5)]
+timestamps = [datetime.today().replace(hour=i) for i in range(4)]
 
 
 class TestEndpoints(IsolatedAsyncioTestCase):
@@ -30,12 +30,13 @@ class TestEndpoints(IsolatedAsyncioTestCase):
         )
         await TrackmaniaRecord.insert(
             TrackmaniaRecord(player=1, track=1, created_at=timestamps[0]),
-            TrackmaniaRecord(player=1, track=1, created_at=timestamps[4]),
+            TrackmaniaRecord(player=1, track=1, created_at=timestamps[2]),
+            TrackmaniaRecord(player=2, track=1, created_at=timestamps[0]),
             TrackmaniaRecord(player=2, track=1, created_at=timestamps[2]),
-            TrackmaniaRecord(player=2, track=1, created_at=timestamps[4]),
+            TrackmaniaRecord(player=2, track=1, created_at=timestamps[3]),
         )
         await Prediction.insert(
-            Prediction(track=1, ends_at=timestamps[3])
+            Prediction(track=1, ends_at=timestamps[1])
         )
         prediction = await Prediction.objects(Prediction.track).get(Prediction.id == 1)
         players = await Player.objects()

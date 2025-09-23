@@ -30,6 +30,8 @@ class PredictionManager:
         )
         for prediction in queue:
             records = await prediction.get_records()
+            if not records:
+                self.update_records(prediction)
             if prediction.type == PredictionType.VERSUS:
                 pass
             elif prediction.type == PredictionType.GUESS:
@@ -37,8 +39,26 @@ class PredictionManager:
             elif prediction.type == PredictionType.RAFFLE:
                 pass # todo not implemented
 
-    def update_records(self, prediction):
+    async def distribute_points(self, prediction: Prediction):
         pass
+
+    async def update_records(self, prediction: Prediction):
+        players = await prediction.get_m2m(Prediction.protagonists)
+        records = self.nadeo_api.get_records([player.uuid for player in players], prediction.track.uuid)
+        now = datetime.now()
+        q = TrackmaniaRecord.insert()
+        for player, record in zip(players, records):
+            record_time = record["recordScore"]["time"]
+            ts = datetime.fromisoformat(record["timestamp"])
+            r = TrackmaniaRecord(
+                player=player.uuid,
+                track=prediction.track.uuid,
+                time=record_time,
+                nadeo_timestamp=ts,
+                created_at=now,
+            )
+            q.add(r)
+        await q
         
 
 monitor = PredictionManager()

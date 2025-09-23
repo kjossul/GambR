@@ -54,3 +54,5 @@ class ClubOut(ClubModel):
     id: int
     players: list[PlayerOut]
     tracks: list[TrackModel]
+
+TrackmaniaRecordModel = create_pydantic_model(Track)

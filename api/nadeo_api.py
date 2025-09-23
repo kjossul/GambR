@@ -26,10 +26,10 @@ class NadeoAPI:
                 with open(filename, 'wb') as f:
                     pickle.dump(token, f)
 
-    def get_records(self, player_uuids, map_uuid):
+    def get_records(self, player_uuids, track_uuid):
         endpoint = "/v2/mapRecords/"
         params = {
             "accountIdList": player_uuids,
-            "mapId": map_uuid
+            "mapId": track_uuid
         }
         return nadeo_api.core.get(self.tokens["NadeoServices"], endpoint, params)
