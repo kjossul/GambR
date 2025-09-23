@@ -25,7 +25,7 @@ class PredictionManager:
 
     async def process_expired_predictions(self):
         now = datetime.now()
-        queue = await Prediction.objects(Prediction.track.uuid).where(
+        queue = await Prediction.objects(Prediction.track).where(
             (Prediction.ends_at < now()) & (not Prediction.processed)
         )
         for prediction in queue:

@@ -166,7 +166,7 @@ async def add_club_tracks(secret: Annotated[str, Header()], club_id: int, tracks
     ts = await asyncio.gather(*[Track.objects().get_or_create(
         Track.uuid == t.uuid, defaults={Track.name: t.name}
     ).run() for t in tracks])
-    await asyncio.gather(*[g.add_m2m(t, m2m=Club.tracks).run() for t in ts])
+    await g.add_m2m(*ts, m2m=Club.tracks)
     return JSONResponse("Tracks added successfully")
 
 @app.delete('/clubs/{club_id}/tracks')

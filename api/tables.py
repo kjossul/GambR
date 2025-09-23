@@ -79,7 +79,7 @@ class Prediction(Table):
     Twitch-style predictions on TrackMania tracks
     """
     track = ForeignKey(Track)
-    club = ForeignKey(Club, null=False)
+    club = ForeignKey(Club)
     # 0: versus, 1: guess the time, 2: raffle
     type = SmallInt()
     # when the window to perform bets on this prediction closes
@@ -102,7 +102,7 @@ class Prediction(Table):
         track, just that the records are not yet uploaded here (so a call to Nadeo services needs to be performed).
         """
         protagonists = await self.get_m2m(self.protagonists)
-        return asyncio.gather(*[TrackmaniaRecord.get_first_created_after_timestamp(
+        return await asyncio.gather(*[TrackmaniaRecord.get_first_created_after_timestamp(
             player=p.id,
             track=self.track.id,
             ts=self.ends_at
