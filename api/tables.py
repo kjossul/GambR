@@ -135,16 +135,16 @@ class Prediction(Table):
     # 0: versus, 1: guess the time, 2: raffle
     type = SmallInt()
     # amount of points to give in order to enter this prediction
+    # NOTE: for raffles, this just indicates the payout to give to the winner
     entry_fee = Integer()
     # when the window to perform bets on this prediction closes
-    closes_at = Timestamp()
+    created_at = Timestamp()
     # when the prediction ends and results are computed
     ends_at = Timestamp()
     # set to true when the points are distributed
     processed = Boolean()
     # players whose results on the track decide the outcome of the prediction
-    protagonists = M2M(LazyTableReference(
-        "PlayerToPrediction", module_path=__name__))
+    protagonists = M2M(LazyTableReference("PlayerToPrediction", module_path=__name__))
 
     async def get_records(self, protagonists=None):
         """
@@ -166,7 +166,25 @@ class Prediction(Table):
         Gets all bets related to this prediction
         """
         return Bet.objects(Bet.player).where(Bet.prediction == self.id)
-
+    
+    @classmethod
+    async def get_club_predictions(cls, club_id, hours=0):
+        """
+        Gets all active predictions in a given club
+        """
+        out = []
+        # gets active predictions or those that ended at most "hours" ago
+        predictions = await cls.objects(cls.track).where(
+            (cls.club == club_id) & ((not cls.processed) | (cls.ends_at + timedelta(hours=hours) > datetime.now()))
+        )
+        protagonists_list = await asyncio.gather(*[
+            prediction.get_m2m() for prediction in predictions
+        ])
+        for prediction, protagonists in zip(predictions, protagonists_list):
+            d = prediction.to_dict()
+            d["protagonists"] = [protagonist.to_dict() for protagonist in protagonists]
+            out.append(d)
+        return out
 
 class PlayerToPrediction(Table):
     """

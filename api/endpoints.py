@@ -1,5 +1,5 @@
 from typing import Annotated
-from fastapi import FastAPI, Header, Query, HTTPException, Request
+from fastapi import Body, FastAPI, Header, Query, HTTPException, Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -183,3 +183,26 @@ async def remove_club_tracks(secret: Annotated[str, Header()], club_id: int, uui
         m2m=Club.tracks
     )
     return JSONResponse("Tracks removed successfully")
+
+@app.get('/clubs/{club_id}/predictions')
+async def get_club_predictions(secret: Annotated[str, Header()], club_id: int, hours: int = 1) -> list[PredictionOut]:
+    """
+    get active predictions of the club, or those that ended at most "hours" ago
+    """
+    g, _ = await validate_membership(secret, club_id)
+    predictions = await Prediction.get_club_predictions(hours=min(hours, 24))
+    return [PredictionOut.from_dict(**p) for p in predictions]
+
+@app.post('/clubs/{club_id}/predictions')
+async def post_club_prediction(secret: Annotated[str, Header()], club_id: int, prediction: PredictionIn) -> PredictionOut:
+    """
+    get active predictions of the club, or those that ended at most "hours" ago
+    """
+    club = await Club.objects().get(Club.id == club_id)
+    requires_admin = club.restricted
+    await validate_membership(secret, club_id, requires_admin=requires_admin)
+    p = await Prediction.insert(Prediction(
+            created_at=datetime.now(), 
+            **PredictionIn.model_dump(exclude_none=True)
+        )).returning(Prediction.all_columns())
+    return PredictionOut.from_dict(protagonists=prediction.protagonists, **p)

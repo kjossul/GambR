@@ -55,4 +55,24 @@ class ClubOut(ClubModel):
     players: list[PlayerOut]
     tracks: list[TrackModel]
 
-TrackmaniaRecordModel = create_pydantic_model(Track)
+TrackmaniaRecordModel = create_pydantic_model(TrackmaniaRecord)
+PredictionModel = create_pydantic_model(Prediction)
+class PredictionIn(create_pydantic_model(Prediction, exclude_columns=(Prediction.created_at, Prediction.processed))):
+    track: int
+    protagonists: list[PlayerModel]
+
+    @field_validator('ends_at')
+    @classmethod
+    def ensure_prediction_window(cls, dt):
+        offset_request_time = datetime.now() - timedelta(seconds=10)
+        # account for max request delay
+        if dt < offset_request_time + timedelta(hours=1) or dt > offset_request_time + timedelta(days=1):
+            raise ValueError("Prediction must be open for at least 1 hour and can't last longer than a day")
+
+class PredictionOut(PredictionModel):
+    protagonists: list[PlayerModel]
+
+    @classmethod
+    def from_dict(cls, **kwargs):
+        kwargs["protagonists"] = [PlayerModel(**p) for p in kwargs["protagonists"]]
+        return cls(kwargs)

@@ -13,15 +13,15 @@ TABLES = Finder().get_table_classes()
 class TestEndpoints(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         await create_db_tables(*TABLES),
-        await asyncio.gather(
-            ModelBuilder.build(Player, defaults={"id": 1, "name": "1", "secret": "1"}),
-            ModelBuilder.build(Player, defaults={"id": 2, "name": "2", "secret": "2"})
-        )
 
     async def asyncTearDown(self):
         await drop_db_tables(*TABLES)
 
     async def test_club(self):
+        await asyncio.gather(
+            ModelBuilder.build(Player, defaults={"id": 1, "name": "1", "secret": "1"}),
+            ModelBuilder.build(Player, defaults={"id": 2, "name": "2", "secret": "2"})
+        )
         # test club creation
         headers1 = {"secret": "1"}
         headers2 = {"secret": "2"}
@@ -77,3 +77,6 @@ class TestEndpoints(IsolatedAsyncioTestCase):
         ) == [3, 2]
         response = client.delete("/clubs/1", headers=headers1)
         assert await Club.count() == 0
+
+    async def test_prediction(self):
+        pass

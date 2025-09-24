@@ -5,6 +5,7 @@ from enum import IntEnum
 import asyncio
 from .nadeo_api import NadeoAPI
 from collections import defaultdict
+from random import choice
 
 
 class PredictionType(IntEnum):
@@ -25,6 +26,9 @@ class PredictionManager:
     def shutdown(self):
         self.scheduler.shutdown()
 
+    async def create_automated_predictions(self):
+        pass
+
     async def process_expired_predictions(self):
         now = datetime.now()
         queue = await Prediction.objects(Prediction.track).where(
@@ -40,13 +44,13 @@ class PredictionManager:
                 # call nadeo api if no client has yet uploaded valid records for this prediction
                 if not records:
                     records = await self.update_records(prediction, protagonists)
-                # if nobody improved their time since the prediction closed, the prediction is considered void
+                # if nobody improved their time since the prediction was created, the prediction is considered void
                 # and all points are returned without modification
                 # TODO change this such that it checks just if a player PLAYED the map, not if he improved on it
                 # add endpoint to "claim" points for playing a track, with op plugin that tracks playtime
-                no_new_records_since_prediction_close = all(record["nadeo_timestamp"] < prediction.closes_at for record in records)
+                no_new_records_since_prediction_close = all(record["nadeo_timestamp"] < prediction.created_at for record in records)
                 no_playtime_since_prediction_close = all(
-                    await PlayerToTrack.get_last_played(player.id, prediction.track) < prediction.closes_at for player in protagonists
+                    await PlayerToTrack.get_last_played(player.id, prediction.track) < prediction.created_at for player in protagonists
                 )
                 if no_new_records_since_prediction_close and no_playtime_since_prediction_close:
                     await distributor.void_prediction()
@@ -87,13 +91,23 @@ class PointsDistributor:
 
     async def handle_payout(self, records):
         qs = []
+        # amount to be paid to the protagonist of the prediction (incentive for people to play the map)
+        # this should only be added if the protagonist set a pb on the map after the prediction window closed
+        # NOTE: gets 5% of total bets
+        protagonist_bonus = int(self.prediction.entry_fee * self.total_bets * 0.05)
         if self.prediction.type == PredictionType.VERSUS:
             # in this case we just give the points to the players that bet correctly
-            fastest_player = min(records, key=lambda r: r["time"])["player"]
+            fastest_record = min(records, key=lambda r: r["time"])
+            fastest_player = fastest_record["player"]
             multiplier = self.total_bets / len(self.bet_buckets[fastest_player])
+            # distribute bet points
             for bet in self.bet_buckets[fastest_player]:
                 win = int(multiplier * self.prediction.entry_fee)
                 qs.append(PlayerToClub.give_points(bet.player.id, self.prediction.club, win))
+            # distribute bonus points to bet protagonist if he improved on the map after the prediction was created
+            if fastest_record["nadeo_timestamp"] > self.prediction.created_at:
+                qs.append(PlayerToClub.give_points(fastest_player, self.prediction.club, protagonist_bonus))
+            qs.append(PlayerToClub.give_points(fastest_player, self.prediction.club))
         elif self.prediction.type == PredictionType.GUESS:
             # closest guess to target time wins, shared if multiple guessed the same time
             target = records[0]["time"]
@@ -101,9 +115,13 @@ class PointsDistributor:
             win = int(self.prediction.entry_fee * self.total_bets / len(self.bet_buckets[closest_guess])) 
             for bet in self.bet_buckets[target]:
                 qs.append(PlayerToClub.give_points(bet.player.id, self.prediction.club, win))
+            if records[0]["nadeo_timestamp"] > self.prediction.created_at:
+                qs.append(PlayerToClub.give_points(records[0]["player"], self.prediction.club, protagonist_bonus))
         elif self.prediction.type == PredictionType.RAFFLE:
-            # todo distribute points based on metrics on current club leaderboard
-            pass
+            winner = choice(self.bet_buckets[0])
+            # in case of raffles, the entry fee field is used to indicate the amount to pay out
+            qs.append(PlayerToClub.give_points(winner.player.id, self.prediction.club, self.prediction.entry_fee))
+
         # marks this prediction as processed so it doesn't get picked up in the future
         self.prediction.processed = True
         qs.append(self.prediction.save())
