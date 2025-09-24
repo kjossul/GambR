@@ -15,8 +15,8 @@ class Player(Table):
     name = Varchar()
     # used for authentication through OpenPlanet
     secret = Varchar(64, unique=True)
+    tracks = M2M(LazyTableReference("PlayerToTrack", module_path=__name__))
     clubs = M2M(LazyTableReference("PlayerToClub", module_path=__name__))
-    bets = M2M(LazyTableReference("Bet", module_path=__name__))
 
 
 class Track(Table):
@@ -25,7 +25,52 @@ class Track(Table):
     """
     uuid = UUID(unique=True)
     name = Varchar()
+    players = M2M(LazyTableReference("PlayerToTrack", module_path=__name__))
     clubs = M2M(LazyTableReference("TrackToClub", module_path=__name__))
+
+
+class PlayerToTrack(Table):
+    """
+    Relationship table for allowing players to claim points for spending time on tracks.
+    NOTE: this is different from "TrackmaniaRecord", because we need an unique constraint here, and this tracks
+    when a map was last played, outside of personal bests.
+    """
+    player = ForeignKey(Player)
+    track = ForeignKey(Track)
+    last_played_at = Timestamp()
+    player_track_constraint = UniqueConstraint(["player", "track"])
+
+    @classmethod
+    def get_last_played(cls, player, track):
+        return cls.select(cls.last_played_at).where((cls.player == player) & (cls.track == track))
+
+
+class TrackmaniaRecord(Table):
+    """
+    Table to store TM records with useful metadata
+    """
+    player = ForeignKey(Player)
+    track = ForeignKey(Track)
+    time = Integer()
+    # when this record was uploaded to nadeo servers
+    nadeo_timestamp = Timestamp()
+    # when this record was uploaded to this table
+    created_at = Timestamp()
+    # stores which entity used Nadeo online services to check the player's time
+    # since api calls to the Nadeo Services are rate limited, to avoid clogging the prediction monitor clients
+    # can send this information to the server using their own token
+    checked_by = Varchar(null=True)
+
+    @classmethod
+    def get_first_created_after_timestamp(cls, player, track, ts: datetime):
+        """
+        Query that returns the earliest record in the table after a given timestamp
+        """
+        return cls.select().where(
+            (cls.player == player) &
+            (cls.track == track) &
+            (cls.created_at > ts)
+        ).order_by(cls.created_at).first()
 
 
 class Club(Table):
@@ -62,6 +107,13 @@ class PlayerToClub(Table):
     admin = Boolean()
     player_club_constraint = UniqueConstraint(["player", "club"])
 
+    @classmethod
+    async def give_points(cls, player, club, points):
+        row = await cls.objects().get(
+            (cls.player == player) & (cls.club == club)
+        )
+        await row.update_self({row.points: row.points + points})
+
 
 class TrackToClub(Table):
     """
@@ -82,6 +134,8 @@ class Prediction(Table):
     club = ForeignKey(Club)
     # 0: versus, 1: guess the time, 2: raffle
     type = SmallInt()
+    # amount of points to give in order to enter this prediction
+    entry_fee = Integer()
     # when the window to perform bets on this prediction closes
     closes_at = Timestamp()
     # when the prediction ends and results are computed
@@ -89,24 +143,29 @@ class Prediction(Table):
     # set to true when the points are distributed
     processed = Boolean()
     # players whose results on the track decide the outcome of the prediction
-    # in case of raffles, all players that join the raffle are added as a protagonist
     protagonists = M2M(LazyTableReference(
         "PlayerToPrediction", module_path=__name__))
-    bets = M2M(LazyTableReference("Bet", module_path=__name__))
 
-    async def get_records(self):
+    async def get_records(self, protagonists=None):
         """
         Returns the earliest records present in the database that have been uploaded after the end of this prediction,
         useful to check prediction results with correct data.
         Note: if the results are empty, it does not mean that the player(s) don't have records on the given
         track, just that the records are not yet uploaded here (so a call to Nadeo services needs to be performed).
         """
-        protagonists = await self.get_m2m(self.protagonists)
+        if not protagonists:
+            protagonists = await self.get_m2m(self.protagonists)
         return await asyncio.gather(*[TrackmaniaRecord.get_first_created_after_timestamp(
             player=p.id,
             track=self.track.id,
             ts=self.ends_at
-        ).run() for p in protagonists]) 
+        ) for p in protagonists])
+    
+    def get_bets(self):
+        """
+        Gets all bets related to this prediction
+        """
+        return Bet.objects(Bet.player).where(Bet.prediction == self.id)
 
 
 class PlayerToPrediction(Table):
@@ -115,8 +174,6 @@ class PlayerToPrediction(Table):
     """
     player = ForeignKey(Player)
     prediction = ForeignKey(Prediction)
-    # value to be filled when the prediction expires
-    result = Integer()
     player_prediction_constraint = UniqueConstraint(["player", "prediction"])
 
 
@@ -128,34 +185,4 @@ class Bet(Table):
     prediction = ForeignKey(Prediction)
     # which outcome has the player betted on
     outcome = Integer()
-    # how many points have been bet
-    points = Integer()
     bet_constraint = UniqueConstraint(["player", "prediction"])
-
-
-class TrackmaniaRecord(Table):
-    """
-    Table to store TM records with useful metadata
-    """
-    player = ForeignKey(Player)
-    track = ForeignKey(Track)
-    time = Integer()
-    # when this record was uploaded to nadeo servers
-    nadeo_timestamp = Timestamp()
-    # when this record was uploaded to this table
-    created_at = Timestamp()
-    # stores which entity used Nadeo online services to check the player's time
-    # since api calls to the Nadeo Services are rate limited, to avoid clogging the prediction monitor clients
-    # can send this information to the server using their own token
-    checked_by = Varchar(null=True)
-
-    @classmethod
-    def get_first_created_after_timestamp(cls, player, track, ts: datetime):
-        """
-        Query that returns the earliest record in the table after a given timestamp
-        """
-        return cls.select().where(
-            (cls.player == player) &
-            (cls.track == track) &
-            (cls.created_at > ts)
-        ).order_by(cls.created_at).first()

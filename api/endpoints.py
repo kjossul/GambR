@@ -73,7 +73,7 @@ async def post_club(secret: Annotated[str, Header()], club: ClubModel):
 
 async def get_player_and_club(secret, club_name):
     club, player = await asyncio.gather(
-        Club.objects().get(Club.name == club_name).run(),
+        Club.objects().get(Club.name == club_name),
         verify_secret(secret)
     )
     if not club:
@@ -111,8 +111,8 @@ async def leave_club(secret: Annotated[str, Header()], name: str):
 
 async def validate_membership(secret, club_id, requires_admin=False):
     club, members, player = await asyncio.gather(
-        Club.objects().get(Club.id == club_id).run(),
-        PlayerToClub.objects(PlayerToClub.player).where(PlayerToClub.club.id == club_id).run(),
+        Club.objects().get(Club.id == club_id),
+        PlayerToClub.objects(PlayerToClub.player).where(PlayerToClub.club.id == club_id),
         verify_secret(secret)
     )
     if not club:
@@ -165,7 +165,7 @@ async def add_club_tracks(secret: Annotated[str, Header()], club_id: int, tracks
     g, _ = await validate_membership(secret, club_id, requires_admin=True)
     ts = await asyncio.gather(*[Track.objects().get_or_create(
         Track.uuid == t.uuid, defaults={Track.name: t.name}
-    ).run() for t in tracks])
+    ) for t in tracks])
     await g.add_m2m(*ts, m2m=Club.tracks)
     return JSONResponse("Tracks added successfully")
 

@@ -72,8 +72,8 @@ class TestEndpoints(IsolatedAsyncioTestCase):
             assert await Track.count() == 3
         response = client.delete("/clubs/1/tracks", headers=headers1, params={"uuids": [data[2]["uuid"]]})
         assert await asyncio.gather(
-            Track.count().run(),
-            TrackToClub.count().run()
+            Track.count(),
+            TrackToClub.count()
         ) == [3, 2]
         response = client.delete("/clubs/1", headers=headers1)
         assert await Club.count() == 0
